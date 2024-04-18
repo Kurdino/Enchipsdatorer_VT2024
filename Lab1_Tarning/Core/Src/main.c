@@ -67,7 +67,7 @@ int is_blue_button_pressed(){
 	uint32_t reg_reading = GPIOC->IDR;
 	uint16_t B1_pin_nbr = 13;
 	uint16_t B1_pin = 0x00000001 << B1_pin_nbr;
-	return (reg_reading & B1_pin);
+	return !(reg_reading & B1_pin);
 }
 void put_die_dots(uint8_t die_nbr){
 	HAL_GPIO_WritePin(GPIOA, GPIO_PIN_4, GPIO_PIN_RESET);
@@ -198,8 +198,9 @@ int main(void)
 	int pressed = 0;
 	while (1)
 	{
+		//uint8_t di = rand()%6 +1
 		// pressed = !HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin);
-		pressed = !is_blue_button_pressed();
+		pressed = is_blue_button_pressed();
 		if(pressed){
 			HAL_GPIO_WritePin(LD2_GPIO_Port, LD2_Pin, GPIO_PIN_SET);
 			die_value = (die_value >= 6) ? 1 : (die_value + 1);
@@ -215,7 +216,7 @@ int main(void)
 		}
 		put_die_dots(die_value);
 		put_on_sseg(dice_value);
-		HAL_Delay(100);
+		HAL_Delay(200);
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
