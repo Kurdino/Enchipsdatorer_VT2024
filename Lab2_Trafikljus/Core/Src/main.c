@@ -41,6 +41,7 @@
 
 /* Private variables ---------------------------------------------------------*/
 UART_HandleTypeDef huart2;
+uint32_t ticks_left_in_state = 0;
 
 /* USER CODE BEGIN PV */
 
@@ -61,6 +62,8 @@ int evq_front_ix = 0;
 int evq_rear_ix = 0;
 void evq_push_back(enum event e);
 enum event evq_pop_front();
+void HAL_GPIO_EXTI_Callback( uint16_t GPIO_Pin );
+
 
 /* USER CODE END PFP */
 
@@ -201,6 +204,33 @@ enum event evq_pop_front(){
 	return e;
 
 }
+int systick_count = 0;
+void my_systick_handler()
+{
+	systick_count++;
+	if (systick_count == 1000)
+	{
+		HAL_GPIO_TogglePin(LD2_GPIO_Port, LD2_Pin);
+		systick_count = 0;
+	}
+
+	if (ticks_left_in_state > 0) {
+		ticks_left_in_state --;
+		if(ticks_left_in_state == 0){
+			evq_push_back(ev_state_timeout);
+		}
+	}
+
+
+}
+void HAL_GPIO_EXTI_Callback( uint16_t GPIO_Pin ){
+	if(GPIO_Pin == B1_Pin){
+
+		evq_push_back(ev_button_push);
+	}
+
+
+}
 
 /* USER CODE END 0 */
 
@@ -242,37 +272,10 @@ int main(void)
 	/* USER CODE BEGIN WHILE */
 	enum state st = s_init; //kunna_hålla state
 	enum event ev = ev_none; //kunna_hålla event
-	ev = ev_none; //standard_värde
-	int curr_press = is_blue_button_pressed();//tryck_på_knappen
-	int last_press = curr_press; //komma_ihåg_föregående_tillstånd
-	uint32_t ticks_left_in_state = 0;
-	uint32_t curr_tick = 0;
-	uint32_t last_tick = 0;
-
+	evq_init();
 	while (1)
 	{
-
-		curr_tick = HAL_GetTick();
-		uint32_t time_diff = curr_tick - last_tick;
-		last_tick = curr_tick;
-
-		curr_press = is_blue_button_pressed();
-
-		if (curr_press && !last_press){//stigande_flank
-			ev = ev_button_push;
-		}
-
-		last_press = curr_press;
-
-		if(time_diff > 0){
-			if (ticks_left_in_state > 0) {
-				ticks_left_in_state -=time_diff;
-				if(ticks_left_in_state == 0){
-					ev = ev_state_timeout;
-				}
-			}
-		}
-
+		ev = evq_pop_front();
 
 		switch(st) {
 
@@ -280,7 +283,7 @@ int main(void)
 			if(ev == ev_button_push)
 			{
 				ev = ev_none; // clear event
-				st = sa_bothstop; // set next state //1
+				st = sa_bothstop; // set next state
 				ticks_left_in_state = 1000; // set next timeout
 				set_traffic_lights(st); // set output
 			}
@@ -298,8 +301,8 @@ int main(void)
 			if ( ev == ev_state_timeout )
 			{
 				ev = ev_none; // clear event
-				st = s_walk; // set next state //2
-				ticks_left_in_state = 3000; // set next timeout
+				st = s_walk; // set next state
+				ticks_left_in_state = 2000; // set next timeout
 				set_traffic_lights(st); // set output
 			}
 			break;
@@ -307,7 +310,7 @@ int main(void)
 			if ( ev == ev_state_timeout)
 			{
 				ev = ev_none; // clear event
-				st = sb_bothstop; // set next state //3
+				st = sb_bothstop; // set next state
 				ticks_left_in_state = 1000; // set next timeout
 				set_traffic_lights(st); // set output
 			}
@@ -317,7 +320,7 @@ int main(void)
 			if ( ev == ev_state_timeout )
 			{
 				ev = ev_none; // clear event
-				st = s_car_go_soon; // set next state //4
+				st = s_car_go_soon; // set next state
 				ticks_left_in_state = 1000; // set next timeout
 				set_traffic_lights(st); // set output
 			}
@@ -327,8 +330,8 @@ int main(void)
 			if ( ev == ev_state_timeout )
 			{
 				ev = ev_none; // clear event
-				st = s_car_go; // set next state //5
-				ticks_left_in_state = 0; // set next timeout
+				st = s_car_go; // set next state
+				ticks_left_in_state = 1000; // set next timeout
 				set_traffic_lights(st); // set output
 			}
 			break;
@@ -337,7 +340,7 @@ int main(void)
 			if ( ev == ev_button_push )
 			{
 				ev = ev_none; // clear event
-				st = s_pushed_wait; // set next state //6
+				st = s_pushed_wait; // set next state
 				ticks_left_in_state = 1000; // set next timeout
 				set_traffic_lights(st); // set output
 			}
@@ -346,7 +349,7 @@ int main(void)
 			if ( ev == ev_state_timeout )
 			{
 				ev = ev_none; // clear event
-				st = s_car_stopping; // set next state //7
+				st = s_car_stopping; // set next state
 				ticks_left_in_state = 1000; // set next timeout
 				set_traffic_lights(st); // set output
 			}
@@ -356,7 +359,7 @@ int main(void)
 
 			ev = ev_none; // clear event
 			st = s_init; // set next state
-			ticks_left_in_state = 0; // set next timeout
+			ticks_left_in_state = 1000; // set next timeout
 			set_traffic_lights(st); // set output
 
 			break;
@@ -495,6 +498,10 @@ static void MX_GPIO_Init(void)
 	GPIO_InitStruct.Pull = GPIO_NOPULL;
 	GPIO_InitStruct.Speed = GPIO_SPEED_FREQ_LOW;
 	HAL_GPIO_Init(GPIOB, &GPIO_InitStruct);
+
+	/* EXTI interrupt init*/
+	HAL_NVIC_SetPriority(EXTI15_10_IRQn, 0, 0);
+	HAL_NVIC_EnableIRQ(EXTI15_10_IRQn);
 
 	/* USER CODE BEGIN MX_GPIO_Init_2 */
 	/* USER CODE END MX_GPIO_Init_2 */
