@@ -42,6 +42,8 @@
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+TIM_HandleTypeDef htim1;
+
 UART_HandleTypeDef huart2;
 
 /* USER CODE BEGIN PV */
@@ -49,6 +51,9 @@ uint16_t button_exti_count; //antal gånger callback körts
 uint16_t button_debounced_count; //antal gånger tryckt på knappen
 uint16_t unhandled_exti = 0;
 uint16_t BOUNCE_DELAY_MS = 20;
+uint16_t seconds = 45;
+uint16_t minutes = 59;
+uint16_t hours = 23;
 //uint16_t last_tick = 0;
 //int z = 0;
 /* USER CODE END PV */
@@ -57,11 +62,13 @@ uint16_t BOUNCE_DELAY_MS = 20;
 void SystemClock_Config(void);
 static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
+static void MX_TIM1_Init(void);
 /* USER CODE BEGIN PFP */
 void uart_print_menu();
 void uart_print_bad_choice();
 void clock_mode();
 void HAL_GPIO_EXTI_Callback( uint16_t GPIO_Pin );
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim);
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -99,8 +106,11 @@ void clock_mode()
 {
 	/*** init segment ***/
 	/*** main loop ***/
+	HAL_TIM_Base_Start_IT(&htim1);
+
 	while (1)
 	{
+
 
 	}
 }
@@ -156,7 +166,48 @@ void HAL_GPIO_EXTI_Callback( uint16_t GPIO_Pin )
 		unhandled_exti = 1;
 	}
 }
+void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
+	int b1_pressed;
+	int colon_state;
+	if (htim->Instance == TIM1) {
+		seconds++;
+		if (seconds == 60) {
+			seconds = 0;
+			minutes++;
+			if (minutes == 60) {
+				minutes = 0;
+				hours++;
+				if (hours == 24) {
+					hours = 0;
+				}
+			}
+		}
+		if(seconds % 2 == 0){
+			colon_state = 1;
+		}
+		else {
+			colon_state = 0;
+		}
+		b1_pressed = GPIO_PIN_RESET == HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin);
+		if (!b1_pressed)
+		{
+			//qs_put_big_num(minutes * 100 + seconds);
+			qs_put_digits(minutes / 10, minutes % 10, seconds / 10, seconds % 10, colon_state);
 
+
+		}
+		else
+		{
+			//qs_put_big_num(hours * 100 + minutes);
+			qs_put_digits(hours / 10, hours % 10, minutes / 10, minutes % 10, colon_state);
+
+
+		}
+
+
+	}
+
+}
 /* USER CODE END 0 */
 
 /**
@@ -187,6 +238,7 @@ int main(void)
 	/* Initialize all configured peripherals */
 	MX_GPIO_Init();
 	MX_USART2_UART_Init();
+	MX_TIM1_Init();
 	/* USER CODE BEGIN 2 */
 	uart_print_menu();
 	/* USER CODE END 2 */
@@ -195,7 +247,7 @@ int main(void)
 	/* USER CODE BEGIN WHILE */
 	while (1)
 	{
-		int menu_choice = 2; // uart_get_menu_choice();
+		int menu_choice = 1; // uart_get_menu_choice();
 		{
 			switch (menu_choice)
 			{
@@ -256,6 +308,52 @@ void SystemClock_Config(void)
 	{
 		Error_Handler();
 	}
+}
+
+/**
+ * @brief TIM1 Initialization Function
+ * @param None
+ * @retval None
+ */
+static void MX_TIM1_Init(void)
+{
+
+	/* USER CODE BEGIN TIM1_Init 0 */
+
+	/* USER CODE END TIM1_Init 0 */
+
+	TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+	TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+	/* USER CODE BEGIN TIM1_Init 1 */
+
+	/* USER CODE END TIM1_Init 1 */
+	htim1.Instance = TIM1;
+	htim1.Init.Prescaler = 19999;
+	htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
+	htim1.Init.Period = 2199 ;
+	htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+	htim1.Init.RepetitionCounter = 0;
+	htim1.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+	if (HAL_TIM_Base_Init(&htim1) != HAL_OK)
+	{
+		Error_Handler();
+	}
+	sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+	if (HAL_TIM_ConfigClockSource(&htim1, &sClockSourceConfig) != HAL_OK)
+	{
+		Error_Handler();
+	}
+	sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+	sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+	if (HAL_TIMEx_MasterConfigSynchronization(&htim1, &sMasterConfig) != HAL_OK)
+	{
+		Error_Handler();
+	}
+	/* USER CODE BEGIN TIM1_Init 2 */
+
+	/* USER CODE END TIM1_Init 2 */
+
 }
 
 /**
