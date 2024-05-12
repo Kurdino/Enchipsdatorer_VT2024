@@ -11,7 +11,23 @@
  */
 void My_Delay(uint32_t mysec)
 {
-	HAL_Delay( 1 + (mysec / 1000) );
+	//HAL_Delay( 1 + (mysec / 1000) );
+	//stoppa räknaren
+	uint16_t cr1 = TIM2->CR1;
+	cr1 = cr1 & ~(0x0001);
+	TIM2->CR1 = cr1;
+	//nollställ räknaren
+	TIM2->CNT = 0;
+	//starta räknaren
+	uint16_t cr2 = TIM2->CR1;
+	cr2 = cr2 | 0x0001;
+	TIM2->CR1 = cr2;
+	// vänta tills räknaren nått upp till fördröjningstiden.
+	while (TIM2->CNT < mysec) {
+		// Vänta
+	}
+
+
 }
 
 #define BIT_BT   0x08
@@ -47,12 +63,12 @@ void TextLCD_SendNibbleWithPulseOnE(TextLCDType * hlcd, uint8_t data)
 	/***** Put nibble when E is low *****/
 	data = data & INV_E;
 	HAL_I2C_Master_Transmit(hlcd->hi2c, hlcd->device_address, &data, 1, 1000);
-	My_Delay(2000);
+	//My_Delay(2000);
 
 	/***** Now set E to high *****/
 	data = data | BIT_E;
 	HAL_I2C_Master_Transmit(hlcd->hi2c, hlcd->device_address, &data, 1, 1000);
-	My_Delay(2000);
+	//My_Delay(2000);
 
 	/***** Then go low again *****/
 	data = data & INV_E;
@@ -93,7 +109,7 @@ void TextLCD_Init(
 	uint8_t data = 0x30; // b# 0011 1000
 	uint8_t ctrl = 0x08;
 
-	My_Delay(70000);
+	My_Delay(1);
 
 	TextLCD_SendNibbleWithPulseOnE(hlcd, (data|ctrl) );
 	TextLCD_SendNibbleWithPulseOnE(hlcd, (data|ctrl) );
@@ -109,7 +125,7 @@ void TextLCD_Init(
 
 	TextLCD_SendByte(hlcd, 0x0F, 0); //Display off, Cursor Off, Blink off
 	TextLCD_SendByte(hlcd, 0x01, 0);
-	My_Delay(5000);
+	My_Delay(1);
 
 	TextLCD_SendByte(hlcd, 0x06, 0);
 	TextLCD_SendByte(hlcd, 0x0C, 0);
@@ -136,19 +152,19 @@ void TextLCD_Clear		(TextLCDType * hlcd)
 
 void TextLCD_SetDDRAMAdr(TextLCDType * hlcd, uint8_t adr)
 {
-    TextLCD_SendByte(hlcd, 0x80 | adr, 0);
+	TextLCD_SendByte(hlcd, 0x80 | adr, 0);
 }
 
 
 void TextLCD_Position	(TextLCDType * hlcd, int col, int row)
 {
-	    uint8_t address = 0x80;
-	    if (row == 1) {
-	        address += 0x40;
-	    }
-	    address += col;
+	uint8_t address = 0x80;
+	if (row == 1) {
+		address += 0x40;
+	}
+	address += col;
 
-	    TextLCD_SetDDRAMAdr(hlcd, address);
+	TextLCD_SetDDRAMAdr(hlcd, address);
 }
 
 void TextLCD_PutChar	(TextLCDType * hlcd, char c)
@@ -159,9 +175,9 @@ void TextLCD_PutChar	(TextLCDType * hlcd, char c)
 
 void TextLCD_PutStr		(TextLCDType * hlcd, char * str)
 {
-	 while (*str != '\0') {
-	        TextLCD_PutChar(hlcd, *str++);
-	    }
+	while (*str != '\0') {
+		TextLCD_PutChar(hlcd, *str++);
+	}
 
 }
 

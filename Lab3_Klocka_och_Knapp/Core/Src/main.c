@@ -46,6 +46,7 @@
 I2C_HandleTypeDef hi2c1;
 
 TIM_HandleTypeDef htim1;
+TIM_HandleTypeDef htim2;
 
 UART_HandleTypeDef huart2;
 
@@ -55,6 +56,7 @@ uint16_t button_debounced_count;
 uint16_t unhandled_exti = 0;
 uint16_t BOUNCE_DELAY_MS = 20;
 struct clock_data my_clock;
+int g_update_clock = 0;
 /* USER CODE END PV */
 
 /* Private function prototypes -----------------------------------------------*/
@@ -63,6 +65,7 @@ static void MX_GPIO_Init(void);
 static void MX_USART2_UART_Init(void);
 static void MX_TIM1_Init(void);
 static void MX_I2C1_Init(void);
+static void MX_TIM2_Init(void);
 /* USER CODE BEGIN PFP */
 void uart_print_menu();
 void uart_print_bad_choice();
@@ -102,12 +105,17 @@ void cd_tick(struct clock_data * pcd){
 	}
 }
 void uart_print_cd(UART_HandleTypeDef * huart,
-		struct clock_data * pcd){
+		struct clock_data * pcd)
+{
 	char str[20];
 	sprintf(str, "Time is:%02d:%02d:%02d\r", pcd->hours, pcd->minutes, pcd->seconds);
 	HAL_UART_Transmit(huart, (uint8_t*)str, strlen(str), HAL_MAX_DELAY);
 }
-void uart_print_menu(){
+
+
+
+void uart_print_menu()
+{
 	char str[100];
 	sprintf(str, "This is very nice menu, yes?\r\n"
 			"Choose your destiny:\r\n"
@@ -115,6 +123,9 @@ void uart_print_menu(){
 			"2. Button Mode\r\n");
 	HAL_UART_Transmit(&huart2, (uint8_t*)str, strlen(str), HAL_MAX_DELAY);
 }
+
+
+
 int uart_get_menu_choice()
 {
 	char str[1] = { '\0' };
@@ -127,15 +138,17 @@ int uart_get_menu_choice()
 	sscanf(str, "%d", &ret);
 	return ret;
 }
-void uart_print_bad_choice(){
+
+
+void uart_print_bad_choice()
+{
 	char str[15];
 
 	sprintf(str,"Fel inmatning");
 	HAL_UART_Transmit(&huart2, (uint8_t*)str, strlen(str), HAL_MAX_DELAY);
-
-
-
 }
+
+
 void clock_mode()
 {
 	/*** init segment ***/
@@ -150,33 +163,34 @@ void clock_mode()
 	HAL_TIM_Base_Start_IT(&htim1);
 	while (1)
 	{
-
-		uart_print_cd(&huart2, &my_clock);
-		HAL_Delay(500);
-		if(my_clock.seconds % 2 == 0){
-			colon_state = 1;
-		}
-		else {
-			colon_state = 0;
-		}
-		b1_pressed = GPIO_PIN_RESET == HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin);
-		if (!b1_pressed)
+		if (g_update_clock)
 		{
-			qs_put_digits(my_clock.minutes / 10, my_clock.minutes % 10, my_clock.seconds / 10, my_clock.seconds % 10, colon_state);
+			b1_pressed = GPIO_PIN_RESET == HAL_GPIO_ReadPin(B1_GPIO_Port, B1_Pin);
+
+			if(my_clock.seconds % 2 == 0){
+				colon_state = 1;
+			}
+			else {
+				colon_state = 0;
+			}
+			if (!b1_pressed)
+			{
+				qs_put_digits(my_clock.minutes / 10, my_clock.minutes % 10, my_clock.seconds / 10, my_clock.seconds % 10, colon_state);
+			}
+			else
+			{
+				qs_put_digits(my_clock.hours / 10, my_clock.hours % 10, my_clock.minutes / 10, my_clock.minutes % 10, colon_state);
+			}
 
 
+			char time_str[9]; // HH:MM:SS + null terminator
+			sprintf(time_str, "%02d:%02d:%02d", my_clock.hours, my_clock.minutes, my_clock.seconds);
+			uart_print_cd(&huart2, &my_clock);
+
+			TextLCD_PutStr(&lcd, time_str);
+			TextLCD_Position(&lcd, 8, 1);
+			g_update_clock = 0;
 		}
-		else
-		{
-			qs_put_digits(my_clock.hours / 10, my_clock.hours % 10, my_clock.minutes / 10, my_clock.minutes % 10, colon_state);
-
-
-		}
-		char time_str[9]; // HH:MM:SS + null terminator
-		sprintf(time_str, "%02d:%02d:%02d", my_clock.hours, my_clock.minutes, my_clock.seconds);
-		TextLCD_PutStr(&lcd, time_str);
-        TextLCD_Position(&lcd, 8, 1);
-
 	}
 }
 void button_mode()
@@ -184,7 +198,7 @@ void button_mode()
 	/*** init segment ***/
 	/*** main loop ***/
 	int b1_pressed;
-	int my_btn_pressed;
+	int pressed;
 	while (1)
 	{
 
@@ -192,9 +206,8 @@ void button_mode()
 		if (unhandled_exti)
 		{
 			HAL_Delay(BOUNCE_DELAY_MS);
-
-			my_btn_pressed = GPIO_PIN_RESET == HAL_GPIO_ReadPin(MY_BTN_GPIO_Port, MY_BTN_Pin);
-			if (my_btn_pressed)
+			pressed = GPIO_PIN_RESET == HAL_GPIO_ReadPin(MY_BTN_GPIO_Port, MY_BTN_Pin);
+			if (pressed)
 			{
 				button_debounced_count++;
 			}
@@ -205,7 +218,7 @@ void button_mode()
 		if(b1_pressed){
 			qs_put_big_num(button_exti_count);
 		}
-		else if(my_btn_pressed){
+		else if(pressed){
 			qs_put_big_num(button_debounced_count);
 		}
 	}
@@ -218,11 +231,12 @@ void HAL_GPIO_EXTI_Callback( uint16_t GPIO_Pin )
 		unhandled_exti = 1;
 	}
 }
+
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim){
 
 	if (htim->Instance == TIM1) {
 		cd_tick(&my_clock);
-
+		g_update_clock = 1;
 	}
 
 }
@@ -258,6 +272,7 @@ int main(void)
   MX_USART2_UART_Init();
   MX_TIM1_Init();
   MX_I2C1_Init();
+  MX_TIM2_Init();
   /* USER CODE BEGIN 2 */
 	uart_print_menu();
   /* USER CODE END 2 */
@@ -406,6 +421,51 @@ static void MX_TIM1_Init(void)
   /* USER CODE BEGIN TIM1_Init 2 */
 
   /* USER CODE END TIM1_Init 2 */
+
+}
+
+/**
+  * @brief TIM2 Initialization Function
+  * @param None
+  * @retval None
+  */
+static void MX_TIM2_Init(void)
+{
+
+  /* USER CODE BEGIN TIM2_Init 0 */
+
+  /* USER CODE END TIM2_Init 0 */
+
+  TIM_ClockConfigTypeDef sClockSourceConfig = {0};
+  TIM_MasterConfigTypeDef sMasterConfig = {0};
+
+  /* USER CODE BEGIN TIM2_Init 1 */
+
+  /* USER CODE END TIM2_Init 1 */
+  htim2.Instance = TIM2;
+  htim2.Init.Prescaler = 84-1;
+  htim2.Init.CounterMode = TIM_COUNTERMODE_UP;
+  htim2.Init.Period = 4294967295;
+  htim2.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
+  htim2.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_DISABLE;
+  if (HAL_TIM_Base_Init(&htim2) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sClockSourceConfig.ClockSource = TIM_CLOCKSOURCE_INTERNAL;
+  if (HAL_TIM_ConfigClockSource(&htim2, &sClockSourceConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  sMasterConfig.MasterOutputTrigger = TIM_TRGO_RESET;
+  sMasterConfig.MasterSlaveMode = TIM_MASTERSLAVEMODE_DISABLE;
+  if (HAL_TIMEx_MasterConfigSynchronization(&htim2, &sMasterConfig) != HAL_OK)
+  {
+    Error_Handler();
+  }
+  /* USER CODE BEGIN TIM2_Init 2 */
+
+  /* USER CODE END TIM2_Init 2 */
 
 }
 
